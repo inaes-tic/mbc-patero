@@ -1,0 +1,4 @@
+hiredis==0.1.1
+pyinotify==0.9.4
+pymongo==2.6.3
+redis==2.8.0

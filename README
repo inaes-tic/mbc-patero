@@ -1,0 +1,24 @@
+MBC-Patero:
+
+This is basically MBC-Zumo ( https://github.com/inaes-tic/mbc-zumo ) using
+Mongo and Redis to interact with MBC-Caspa.
+
+It monitors an incoming folder for new files and queues them for transcoding,
+adding them to Caspa when finished.
+
+Installation:
+
+All python libraries are listed inside requirements.txt and can be installed
+with pip:
+
+    pip install -r requirements.txt
+
+Then copy defaults.json as config.json and edit to suit your system.
+Of particular importance are the *_dir keys, best performance is achieved
+when they are on the same filesystem as we can make hardlinks instead of
+copying files. For now don't touch queue_coll and make sure that dbname
+points to the same database that Caspa uses.
+
+Many things aren't implemented yet, like rejecting bad files (different
+framerate or size, etc) or automatically grabbing the same configuration
+used by Caspa.
