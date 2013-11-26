@@ -37,7 +37,15 @@ class Patero(GObject.GObject):
             self.queue_file(obj['input']['path'])
 
         GLib.timeout_add(500, self.transcode)
+        GLib.timeout_add(500, self.send_status)
 
+
+    def send_status(self, status=None):
+        if status is None:
+            status = { 'running': True, 'id': 1 }
+        method = 'created'
+        self.redis.publish('Transcode.Status', json.dumps({'method': method, 'payload': status}))
+        return True
 
     def refresh_jobs(self):
         method = 'updated'
