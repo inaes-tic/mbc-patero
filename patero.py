@@ -137,12 +137,16 @@ class Patero(GObject.GObject):
                     job['message'][-1] += '...Done!'
                 job['message'].append('All done!')
                 job['progress'] = 0
-                self.save_job(job)
 
+                tmp = []
                 for filename in job['output']['files']:
                     copy_or_link(filename, output_dir)
                     os.unlink(filename)
+                    tmp.append(os.path.join(output_dir, os.path.basename(filename)))
+                job['output']['files'] = tmp
+                self.save_job(job)
                 # XXX FIXME: here tell Caspa the file is ready
+                # not needed I guess, when we get there a processing-done we know it's time to add it.
                 self.running = False
                 return
             else:
@@ -161,7 +165,18 @@ class Patero(GObject.GObject):
         dst = os.path.splitext(filename)[0] + '.m4v'
         dst = os.path.join(workspace_dir, dst)
 
+        def on_transcode_finish(task, src, dst):
+            task.job['output']['transcoded'] = os.path.join(output_dir, os.path.basename(dst))
+            task.job['output']['stat'] = {}
+            # XXX: this may end up with a different inode number after moving to processed dir.
+            try:
+                task.job['output']['stat'] = stat_to_dict(os.stat(dst))
+            except OSError:
+                pass
+            self.save_job(task.job)
+
         task = Transcode(job, src, dst)
+        task.connect('finished', on_transcode_finish)
         add_task(task)
 
         # yeah, looks weird but we want the md5 of the already transcoded file.
