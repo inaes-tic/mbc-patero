@@ -3,6 +3,7 @@
 
 import logging
 import os, shutil
+from collections import deque
 
 from gi.repository import GLib, GObject
 
@@ -13,7 +14,7 @@ from pymongo import MongoClient
 ObjectId = pymongo.helpers.bson.ObjectId
 
 from common import *
-from Melt import Transcode
+from jobs import Transcode, MD5, Filmstrip
 from monitor import Monitor
 
 class Patero(GObject.GObject):
@@ -26,9 +27,10 @@ class Patero(GObject.GObject):
 
         self.redis = redis.Redis(host=redis_host, port=redis_port, db=redis_db)
 
-        self.melt = None
+        self.tasks = deque()
+        self.running = False
 
-        res = queue.update({'stage': {'$ne':'processing-done'}}, {'$set': {'stage': 'queued', 'message': [], 'progress':0}}, multi=True)
+        res = queue.update({'stage': {'$ne':'processing-done'}}, {'$set': {'stage': 'queued', 'message': [], 'progress':0, 'output.files': []}}, multi=True)
         if res['n']:
             self.refresh_jobs()
 
@@ -78,7 +80,7 @@ class Patero(GObject.GObject):
         job['id']  = _oid
 
     def transcode(self):
-        if self.melt:
+        if self.running:
             return True
 
         job = self.queue.find_one({'stage': 'queued'})
@@ -89,58 +91,93 @@ class Patero(GObject.GObject):
         job['stage'] = 'about-to-process'
         self.save_job(job)
 
-        filename = job['filename']
-        src = os.path.join(workspace_dir, filename)
-        dst = os.path.splitext(filename)[0] + '.m4v'
-        dst = os.path.join(output_dir, dst)
-
-        def progress_cb(melt, progress, job):
+        def progress_cb(task, progress):
+            job = task.job
             logging.debug('Progress: %s', progress)
             job['progress'] = progress
             self.save_job(job)
 
 
-        def start_cb(melt, src, dst, job):
+        def start_cb(task, src, dst):
+            job = task.job
             logging.debug('Start: %s', src)
             job['stage'] = 'processing'
+            job['progress'] = 0
             self.save_job(job)
 
-        def error_cb(melt, msg, job):
+        def error_cb(task, msg):
+            job = task.job
             # XXX: get rid of all files here?
             logging.error('Error: %s', msg)
             job['stage'] = 'processing-error'
             job['message'].append('Error: ' + msg)
             self.save_job(job)
-            self.melt = None
+            self.tasks.clear()
+            self.running = False
 
-        def stage_cb(melt, job, msg):
+        def status_cb(task, msg):
+            job = task.job
             logging.debug('Stage: %s', msg)
             if job['message']:
                 job['message'][-1] += '...Done!'
             job['message'].append(msg)
             self.save_job(job)
 
-        def success_cb(melt, dst, job):
-            logging.debug('Ok: %s', dst)
-            job['stage'] = 'processing-done'
-            job['message'].append('All done!')
-            self.save_job(job)
-            self.melt = None
+        def start(*args):
+            self.running = True
+            task = self.tasks.popleft()
+            task.start()
 
-            src = os.path.join(workspace_dir, job['filename'])
-            copy_or_link(src, dst)
-            os.unlink(src)
-            # XXX FIXME: here tell Caspa the file is ready, pass it thru filmstrip and ffmpeg filters.
+        def success_cb(task, dst):
+            job = task.job
+            if not self.tasks:
+                logging.debug('Ok: %s', dst)
+                job['stage'] = 'processing-done'
+                if job['message']:
+                    job['message'][-1] += '...Done!'
+                job['message'].append('All done!')
+                job['progress'] = 0
+                self.save_job(job)
 
-        m = self.melt = Transcode(src, dst)
-        m.connect('progress', progress_cb, job)
-        m.connect('success', success_cb, job)
-        m.connect('start', start_cb, job)
-        m.connect('error', error_cb, job)
-        m.connect('start-audio', stage_cb, job, 'processing-normalize-audio')
-        m.connect('start-video', stage_cb, job, 'processing-transcode-video')
+                for filename in job['output']['files']:
+                    copy_or_link(filename, output_dir)
+                    os.unlink(filename)
+                # XXX FIXME: here tell Caspa the file is ready
+                self.running = False
+                return
+            else:
+                start()
 
-        m.start()
+        def add_task(task):
+            self.tasks.append(task)
+            task.connect('progress', progress_cb)
+            task.connect('success', success_cb)
+            task.connect('status', status_cb)
+            task.connect('start', start_cb)
+            task.connect('error', error_cb)
+
+        filename = job['filename']
+        src = os.path.join(workspace_dir, filename)
+        dst = os.path.splitext(filename)[0] + '.m4v'
+        dst = os.path.join(workspace_dir, dst)
+
+        task = Transcode(job, src, dst)
+        add_task(task)
+
+        # yeah, looks weird but we want the md5 of the already transcoded file.
+        task = MD5(job, src=dst)
+        add_task(task)
+
+        # even worse but we want the filmstrip of the already transcoded file.
+        src = dst
+        dst = os.path.splitext(filename)[0] + '.mp4'
+        dst = os.path.join(workspace_dir, dst)
+
+        task = Filmstrip(job, src, dst)
+        add_task(task)
+
+
+        start()
 
         return True
 
@@ -153,13 +190,20 @@ class Patero(GObject.GObject):
         filename = os.path.basename(filepath)
 
         db = self.db
-        if db.transcode_queue.find({ 'input.stat.ino': stat['ino']}).count():
+        if db.transcode_queue.find({ 'input.stat.mtime': stat['mtime'], 'path': filepath}).count():
             return
 
         job = {
             'input':    {
                 'stat': stat,
                 'path': filepath,
+            },
+            'output':    {
+                'checksum': '',
+                'files': [],
+                'metadata': {
+
+                },
             },
             'filename': filename,
             'stage':    'moving',
