@@ -96,7 +96,7 @@ class Transcode(GObject.GObject):
     def alldone (self):
         dst = self.dst
         if self.mlt:
-            #os.remove (self.mlt)
+            os.remove (self.mlt)
             self.mlt = None
 
         self.emit('success', self.dst)
