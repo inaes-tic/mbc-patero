@@ -113,6 +113,7 @@ class Transcode(JobBase):
 
         m.connect('status', self._emit_msg, 'status')
         m.connect('progress', self._emit_msg, 'progress')
+        m.connect('error', self._emit_msg, 'error')
         m.connect('finished', self._finish_cb)
         m.connect('success', self._success_cb)
         m.connect('start', self._start_cb)

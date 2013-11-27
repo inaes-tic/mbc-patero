@@ -66,7 +66,11 @@ class Transcode(GObject.GObject):
 
         return True
 
-    def check_fail (self, nxt):
+    def check_fail (self, process, ret, nxt):
+        if ret != 0:
+            self.emit('error', 'Melt error')
+            return
+
         if not self.fail:
             nxt()
         else:
@@ -81,7 +85,7 @@ class Transcode(GObject.GObject):
         self.emit('status', 'audio-norm')
         self.emit('start-audio')
         p = self.spawn(prog)
-        p.connect ('exit', lambda o, r: self.check_fail(self.do_pass2))
+        p.connect ('exit', self.check_fail, self.do_pass2)
 
     def do_pass2 (self):
         prog = ['melt','-progress', self.mlt.strip(),
@@ -91,7 +95,7 @@ class Transcode(GObject.GObject):
         self.emit('status', 'video-transcode')
         self.emit('start-video')
         p = self.spawn(prog)
-        p.connect ('exit', lambda o, r: self.check_fail(self.alldone))
+        p.connect ('exit',self.check_fail, self.alldone)
 
     def alldone (self):
         dst = self.dst
