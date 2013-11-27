@@ -3,6 +3,7 @@
 
 import logging
 import os, shutil
+import uuid
 from collections import deque
 
 from gi.repository import GLib, GObject
@@ -52,32 +53,24 @@ class Patero(GObject.GObject):
     def refresh_jobs(self):
         method = 'updated'
         for job in self.queue.find():
-            _oid = job['_id']
-            _id = unicode(_oid)
-            job['_id'] = _id
-            job['id']  = _id
             self.redis.publish('Transcode.Progress', json.dumps({'method': method, 'payload': job}))
-            job['_id'] = _oid
-            job['id']  = _oid
 
     def delete_job(self, job):
         self.queue.remove(job['_id'])
-        _id = unicode(job['_id'])
+        _id = job['_id']
         self.redis.publish('Transcode.Progress', json.dumps({'method': 'deleted', 'payload': {'id':_id, '_id':_id} }))
 
-    def save_job(self, job):
+    def save_job(self, job, isNew=False):
         if '_id' in job:
             method = 'updated'
         else:
             method = 'created'
 
+        if isNew:
+            method = 'created'
+
         _oid = self.queue.save(job)
-        _id = unicode(_oid)
-        job['_id'] = _id
-        job['id']  = _id
         self.redis.publish('Transcode.Progress', json.dumps({'method': method, 'payload': job}))
-        job['_id'] = _oid
-        job['id']  = _oid
 
     def transcode(self):
         if self.running:
@@ -209,6 +202,7 @@ class Patero(GObject.GObject):
             return
 
         job = {
+            '_id': unicode(uuid.uuid4()),
             'input':    {
                 'stat': stat,
                 'path': filepath,
@@ -225,7 +219,7 @@ class Patero(GObject.GObject):
             'progress': '0',
             'message':  [],
         }
-        self.save_job(job)
+        self.save_job(job, isNew=True)
 
         if do_copy:
             try:
