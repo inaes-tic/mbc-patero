@@ -84,7 +84,7 @@ class Filmstrip(JobBase):
     def start (self):
         self.emit ('start', self.src, self.dst)
         self.emit ('status', 'Making Filmstrip video')
-        prog = '-an -r 1 -vf scale=200:ih*200/iw -vcodec copy'.split()
+        prog = '-an -r 1 -vf scale=200:ih*200/iw -vcodec libx264'.split()
         head = ['ffmpeg', '-i', self.src]
         head.extend(prog)
         prog = head
