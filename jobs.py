@@ -80,6 +80,7 @@ class MD5(JobBase):
 class Filmstrip(JobBase):
     def __init__(self, job, src=None, dst=None):
         JobBase.__init__(self, job, src, dst)
+        self.total_time = None
 
     def start (self):
         self.emit ('start', self.src, self.dst)
@@ -92,6 +93,27 @@ class Filmstrip(JobBase):
         prog.append(self.dst)
         p = self.spawn(prog)
         p.connect ('exit', self._on_exit)
+
+    def stderr_cb (self, o, s):
+        def timetuple_to_seconds(ttuple):
+            ttuple = ttuple[:-1]
+            total = 0
+            for idx,v in enumerate(reversed(ttuple)):
+                total += int(v) * (60**idx)
+            return total
+
+        # HH:MM:SS.ff
+        durations = re.findall(r'Duration: (\d+):(\d+):(\d+).(\d+)', s)
+        if durations and not self.total_time:
+            # not using frame number for now.
+            self.total_time = timetuple_to_seconds(durations[0])
+
+        current = re.findall(r'time=(\d+):(\d+):(\d+).(\d+)', s)
+        if current and self.total_time:
+            current = timetuple_to_seconds(current[0])
+            progress = (100.0*current) / self.total_time
+            self.emit('progress', progress)
+
 
     def _on_exit(self, process, ret):
         if ret:
