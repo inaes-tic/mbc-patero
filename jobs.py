@@ -73,7 +73,7 @@ class MD5(JobBase):
             for chunk in iter(lambda: f.read(8192), b''):
                  md5.update(chunk)
         self.job['output']['checksum'] = md5.hexdigest()
-        self.emit ('status', 'calculating-checksum')
+        self.emit ('status', 'Calculating checksum')
         self.emit ('progress', 100.0)
         self.alldone()
 
@@ -84,7 +84,7 @@ class Filmstrip(JobBase):
 
     def start (self):
         self.emit ('start', self.src, self.dst)
-        self.emit ('status', 'Making Filmstrip video')
+        self.emit ('status', 'Making filmstrip video')
         prog = '-an -r 1 -vf scale=200:ih*200/iw -vcodec libx264'.split()
         head = ['ffmpeg', '-i', self.src]
         head.extend(prog)

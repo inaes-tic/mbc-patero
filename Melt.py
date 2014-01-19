@@ -82,7 +82,7 @@ class Transcode(GObject.GObject):
                 '-consumer', 'xml:' + self.mlt.strip(),
                 'video_off=1', 'all=1']
 
-        self.emit('status', 'audio-norm')
+        self.emit('status', 'Normalizing audio')
         self.emit('start-audio')
         p = self.spawn(prog)
         p.connect ('exit', self.check_fail, self.do_pass2)
@@ -92,7 +92,7 @@ class Transcode(GObject.GObject):
                 '-consumer', 'avformat:' + self.dst.strip(),
                 'properties=H.264', 'strict=experimental', 'progressive=1']
 
-        self.emit('status', 'video-transcode')
+        self.emit('status', 'Transcoding video')
         self.emit('start-video')
         p = self.spawn(prog)
         p.connect ('exit',self.check_fail, self.alldone)
