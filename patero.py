@@ -31,7 +31,7 @@ class Patero(GObject.GObject):
         self.tasks = deque()
         self.running = False
 
-        res = queue.update({'stage': {'$ne':'processing-done'}}, {'$set': {'stage': 'queued', 'message': [], 'progress':0, 'output.files': []}}, multi=True)
+        res = queue.update({'stage': {'$in':['processing']}}, {'$set': {'stage': 'queued', 'tasks': [], 'progress':0, 'output.files': []}}, multi=True)
         if res['n']:
             self.refresh_jobs()
 
