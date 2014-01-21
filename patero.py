@@ -215,7 +215,7 @@ class Patero(GObject.GObject):
                 },
             },
             'filename': filename,
-            'stage':    'moving',
+            'stage':    '',
             'progress': '0',
             'message':  [],
         }
