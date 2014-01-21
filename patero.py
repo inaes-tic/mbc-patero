@@ -103,7 +103,9 @@ class Patero(GObject.GObject):
             # XXX: get rid of all files here?
             logging.error('Error: %s', msg)
             job['stage'] = 'processing-error'
-            job['message'].append('Error: ' + msg)
+            if job['tasks']:
+                job['tasks'][-1]['status'] = 'failed'
+                job['tasks'][-1]['message'] = 'Error: ' + msg
             self.save_job(job)
             self.tasks.clear()
             self.running = False
@@ -111,24 +113,29 @@ class Patero(GObject.GObject):
         def status_cb(task, msg):
             job = task.job
             logging.debug('Stage: %s', msg)
-            if job['message']:
-                job['message'][-1] += '...Done!'
-            job['message'].append(msg)
+            if job['tasks']:
+                job['tasks'][-1]['status'] = 'done'
+            job['tasks'].append({'name':msg, 'status':'processing', 'message':''})
             self.save_job(job)
 
         def start(*args):
             self.running = True
             task = self.tasks.popleft()
+            job = task.job
+            if job['tasks']:
+                job['tasks'][-1]['status'] = 'done'
             task.start()
 
         def success_cb(task, dst):
             job = task.job
+
+            if job['tasks']:
+                job['tasks'][-1]['status'] = 'done'
+                self.save_job(job)
+
             if not self.tasks:
                 logging.debug('Ok: %s', dst)
                 job['stage'] = 'processing-done'
-                if job['message']:
-                    job['message'][-1] += '...Done!'
-                job['message'].append('All done!')
                 job['progress'] = 0
 
                 tmp = []
@@ -217,7 +224,7 @@ class Patero(GObject.GObject):
             'filename': filename,
             'stage':    '',
             'progress': '0',
-            'message':  [],
+            'tasks':  [], # list of: {name:'', status:'', message:''}
         }
         self.save_job(job, isNew=True)
 
@@ -228,7 +235,12 @@ class Patero(GObject.GObject):
                 self.save_job(job)
                 os.unlink(filepath)
             except:
-                job['message'].append('Error moving file')
+                job['stage'] = 'processing-error'
+                job['tasks'].append({
+                    'name': 'Moving files',
+                    'status': 'failed',
+                    'message': 'Error: ',
+                })
                 self.save_job(job)
         else:
             job['stage'] = 'queued'
