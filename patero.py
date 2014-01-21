@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 import logging
-import os, shutil
+import sys, os, shutil
 import uuid
 from collections import deque
 
@@ -235,11 +235,12 @@ class Patero(GObject.GObject):
                 self.save_job(job)
                 os.unlink(filepath)
             except:
+                e = sys.exc_info()[1]
                 job['stage'] = 'processing-error'
                 job['tasks'].append({
                     'name': 'Moving files',
                     'status': 'failed',
-                    'message': 'Error: ',
+                    'message': 'Error: ' + unicode(e),
                 })
                 self.save_job(job)
         else:
