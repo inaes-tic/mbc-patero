@@ -15,7 +15,7 @@ from pymongo import MongoClient
 ObjectId = pymongo.helpers.bson.ObjectId
 
 from common import *
-from jobs import Transcode, MD5, Filmstrip
+from jobs import getFileType, Transcode, MD5, Filmstrip
 from monitor import Monitor
 
 class Patero(GObject.GObject):
@@ -203,6 +203,11 @@ class Patero(GObject.GObject):
             return
 
         filename = os.path.basename(filepath)
+        _type = getFileType(filepath)
+
+        if not _type:
+            logging.debug('File not recognized: %s', filepath)
+            return
 
         db = self.db
         if db.transcode_queue.find({ 'input.stat.mtime': stat['mtime'], 'path': filepath}).count():
@@ -218,7 +223,7 @@ class Patero(GObject.GObject):
                 'checksum': '',
                 'files': [],
                 'metadata': {
-
+                    'type': _type['type'],
                 },
             },
             'filename': filename,
