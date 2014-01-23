@@ -11,6 +11,24 @@ import math
 
 from Melt import Transcode as MeltTranscode
 
+_file_types = [
+    {
+    'type':    'image',
+    'seconds': 0,
+    'pattern': re.compile(r'\.(bmp|gif|jpg|png|yuv|pix|dpx|exr|jpeg|pam|pbm|pcx|pgm|pic|ppm|ptx|sgi|tif|tiff|webp|xbm|xwd)$', re.I),
+    },
+    {
+    'type':    'video',
+    'seconds': 5,
+    'pattern': re.compile(r'\.(webm|mp4|flv|avi|mpeg|mpeg2|mpg|mov|m4v|mkv|ogm|ogg)$', re.I),
+    }
+]
+
+def getFileType(filename):
+    for _type in _file_types:
+        if _type['pattern'].search(filename):
+            return _type
+    return None
 
 class JobBase(GObject.GObject):
     __gsignals__ = {
