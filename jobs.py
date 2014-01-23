@@ -103,6 +103,10 @@ class Filmstrip(JobBase):
         self.total_time = None
 
     def start (self):
+
+        if self.dst is None:
+            self.dst = os.path.join( os.path.split(self.src)[0], self.job['output']['checksum']+'.mp4' )
+
         self.emit ('start', self.src, self.dst)
         self.emit ('status', 'Making filmstrip video')
         prog = '-an -r 1 -vf scale=200:ih*200/iw -vcodec libx264'.split()
