@@ -6,6 +6,8 @@ import tempfile
 import hashlib
 import os
 import re
+import math
+
 
 from Melt import Transcode as MeltTranscode
 
@@ -123,9 +125,139 @@ class Filmstrip(JobBase):
             self.job['output']['files'].append(self.dst)
             self.alldone()
 
+
+
 class FFmpegInfo(JobBase):
-    #not now, let Caspa handle this.
-    pass
+    def __init__(self, job, src=None, dst=None):
+        JobBase.__init__(self, job, src, dst)
+        self.output = []
+
+    def start (self):
+        self.emit ('start', self.src, self.dst)
+        self.emit ('status', 'Extracting metadata')
+        prog = 'ffprobe -show_format -show_streams'.split()
+        prog.append(self.src)
+        p = self.spawn(prog)
+        p.connect ('exit', self._on_exit)
+
+    def stdout_cb (self, o, s):
+        self.output.append(s)
+
+    def _on_exit(self, process, ret):
+    # helper functions, the real stuff begins a little below this.
+        def to_dict(elems):
+            ret = {}
+            for elem in elems:
+                k,v = elem.split('=')
+                ret[k] = v
+            return ret
+
+        def seconds_to_human(secs):
+            msecs, secs= math.modf(secs)
+            secs = int(secs)
+
+            m,s = divmod(secs, 60)
+            h,m = divmod(m, 60)
+
+            # hate hate hate.
+            return ('%i:%.2i:%.2i' % (h,m,s)) + ('%.2f'%msecs)[1:]
+
+        def find_stream_by_codec(streams, codec):
+            for s in streams.values():
+                if codec == s['codec_type']:
+                    return s
+            return None
+
+        def extract_audio_info(stream, fmt):
+            ret = {}
+            if not stream:
+                return ret
+
+            ret['codec'] = stream.get('codec_name', '')
+            ret['sample_rate'] = int( stream.get('sample_rate', 0) )
+            ## XXX: audio bitrate (like 128k mp3) is missing.
+            ##ret['bitrate']
+            ret['channels'] = {'1':'mono', '2':'stereo'}.get(stream.get('channels', 0), '')
+            return ret
+
+        def extract_video_info(stream, fmt):
+            ret = {}
+            if not (stream and fmt):
+                return ret
+
+            ret['container'] = fmt.get('format_name', '').split(',')[0]
+            ret['bitrate'] = int( fmt.get('bit_rate', 0) )
+            ret['codec'] = stream.get('codec_name', '')
+            num,den = [float(x) for x in stream.get('r_frame_rate', '0.0/1').split('/')]
+            if den:
+                ret['fps'] = num/den
+            else:
+                ret['fps'] = 0.0
+
+            ret['resolution'] = res = {'w': 0, 'h': 0}
+            res['w'] = int( stream.get('width', 0) )
+            res['h'] = int( stream.get('height', 0) )
+
+            # save aspect ratio for auto-padding
+            aspect = stream.get('display_aspect_ratio', '')
+            if aspect:
+                n,d = [float(x) for x in aspect.split(':')]
+                ret['aspect'] = n / d
+                ret['aspectString'] = aspect
+            else:
+                w,h = res['w'], res['h']
+                if w:
+                    ret['aspect'] = float(w) / h
+                    ret['aspectString'] = '%i:%i' % (w,h)
+                else:
+                    ret['aspect'] = 0.0
+                    ret['aspectString'] = ''
+
+            # save pixel ratio for output size calculation
+            aspect = stream.get('sample_aspect_ratio', '1:1')
+            n,d = [float(x) for x in aspect.split(':')]
+            ret['pixel'] = pixel = n / d
+            ret['pixelString'] = aspect
+
+            # correct video resolution when pixel aspectratio is not 1
+            ret['resolutionSquare'] = res = {'w': 0, 'h': 0}
+            res['w'] = int( stream.get('width', 0) )
+            res['h'] = int( stream.get('height', 0) )
+            if pixel == 1 or pixel == 0:
+                res['w'] = res['w'] * pixel
+
+            #rotate is missing.
+            return ret
+
+        # here.
+        if ret:
+            self.emit('error', 'ffprobe error')
+
+        else:
+            output = ''.join(self.output)
+            streams_raw = re.findall(re.compile('\[STREAM\](.+?)\[/STREAM\]', re.M | re.S), output)
+            fmt_raw = re.findall(re.compile('\[FORMAT\](.+?)\[/FORMAT\]', re.M | re.S), output)
+
+            streams_raw = [item.strip().split('\n') for item in streams_raw]
+            fmt_raw = [item.strip().split('\n') for item in fmt_raw]
+
+            streams = {}
+            for idx, s in enumerate(streams_raw):
+                streams[idx] = to_dict(s)
+            fmt = to_dict(fmt_raw[0])
+
+# XXX:  faltan title , que puede estar en stream de video o en format
+# XXX:  date y artist
+            meta = {}
+            meta['synched'] = fmt.get('start_time', None) == '0.000000'
+            meta['durationsec'] = d = float( fmt.get('duration', 0 ))
+            meta['durationraw'] = seconds_to_human(d)
+            meta['audio'] = extract_audio_info(find_stream_by_codec(streams, 'audio'), fmt)
+            meta['video'] = extract_video_info(find_stream_by_codec(streams, 'video'), fmt)
+
+            self.job['output']['metadata'].update(meta)
+
+            self.alldone()
 
 class Transcode(JobBase):
     def __init__(self, job, src=None, dst=None):
