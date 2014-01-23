@@ -1,9 +1,10 @@
 import json
+import codecs
 
 __user = {}
 __defaults = {}
 try:
-    fp = open('config.json', 'r+')
+    fp = codecs.open('config.json', 'r+', 'utf-8')
     __user = json.load(fp)
 except ValueError:
 # could not decode json, file empty?
@@ -12,7 +13,7 @@ finally:
     fp.close()
 
 try:
-    fp = open('defaults.json', 'r+')
+    fp = codecs.open('defaults.json', 'r+', 'utf-8')
     __defaults = json.load(fp)
 except ValueError:
 # could not decode json, file empty?
@@ -24,7 +25,7 @@ finally:
 import atexit
 @atexit.register
 def __save_config():
-    fp = open('config.json', 'w')
+    fp = codecs.open('config.json', 'w', 'utf-8')
     json.dump(__defaults, fp, indent=4, sort_keys=True)
     fp.close()
 

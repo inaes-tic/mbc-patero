@@ -32,11 +32,11 @@ def getFileType(filename):
 
 class JobBase(GObject.GObject):
     __gsignals__ = {
-        'start': (GObject.SIGNAL_RUN_FIRST, None, (str, str)),
-        'finished': (GObject.SIGNAL_RUN_FIRST, None, (str,str)),
-        'status': (GObject.SIGNAL_RUN_FIRST, None, (str,)),
-        'error': (GObject.SIGNAL_RUN_FIRST, None, (str,)),
-        'success': (GObject.SIGNAL_RUN_FIRST, None, (str,)),
+        'start': (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT, GObject.TYPE_PYOBJECT)),
+        'finished': (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT,GObject.TYPE_PYOBJECT)),
+        'status': (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
+        'error': (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
+        'success': (GObject.SIGNAL_RUN_FIRST, None, (GObject.TYPE_PYOBJECT,)),
         'progress': (GObject.SIGNAL_RUN_FIRST, None, (float,)),
         'start-audio': (GObject.SIGNAL_RUN_FIRST, None, ()),
         'start-video': (GObject.SIGNAL_RUN_FIRST, None, ())

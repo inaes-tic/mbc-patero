@@ -272,7 +272,7 @@ if __name__ == '__main__':
     m = Monitor(incoming_dir)
 
     def new_file_cb(monitor, filepath):
-        p.queue_file(filepath)
+        p.queue_file(filepath.decode('utf-8'))
 
     m.connect('new-file', new_file_cb)
 
