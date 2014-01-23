@@ -15,7 +15,7 @@ from pymongo import MongoClient
 ObjectId = pymongo.helpers.bson.ObjectId
 
 from common import *
-from jobs import getFileType, Transcode, MD5, Filmstrip
+from jobs import getFileType, Transcode, MD5, Filmstrip, FFmpegInfo
 from monitor import Monitor
 
 class Patero(GObject.GObject):
@@ -175,21 +175,33 @@ class Patero(GObject.GObject):
                 pass
             self.save_job(task.job)
 
-        task = Transcode(job, src, dst)
-        task.connect('finished', on_transcode_finish)
-        add_task(task)
+        _type = getFileType(src)
+        if _type['type'] == 'video':
+            task = Transcode(job, src, dst)
+            task.connect('finished', on_transcode_finish)
+            add_task(task)
 
-        # yeah, looks weird but we want the md5 of the already transcoded file.
-        task = MD5(job, src=dst)
-        add_task(task)
+            # yeah, looks weird but we want the md5 of the already transcoded file.
+            task = MD5(job, src=dst)
+            add_task(task)
 
-        # even worse but we want the filmstrip of the already transcoded file.
-        src = dst
-        dst = os.path.splitext(filename)[0] + '.mp4'
-        dst = os.path.join(workspace_dir, dst)
+            # even worse but we want the filmstrip of the already transcoded file.
+            src = dst
+            task = Filmstrip(job, src)
+            add_task(task)
 
-        task = Filmstrip(job, src, dst)
-        add_task(task)
+            task = FFmpegInfo(job, src)
+            add_task(task)
+
+        else:
+            task = MD5(job, src)
+            add_task(task)
+
+            task = Filmstrip(job, src)
+            add_task(task)
+
+            task = FFmpegInfo(job, src)
+            add_task(task)
 
 
         start()
