@@ -15,7 +15,7 @@ from pymongo import MongoClient
 ObjectId = pymongo.helpers.bson.ObjectId
 
 from common import *
-from jobs import getFileType, Transcode, MD5, Filmstrip, FFmpegInfo
+from jobs import getFileType, Transcode, MD5, Filmstrip, FFmpegInfo, Thumbnail
 from monitor import Monitor
 
 class Patero(GObject.GObject):
@@ -193,6 +193,9 @@ class Patero(GObject.GObject):
             task = FFmpegInfo(job, src)
             add_task(task)
 
+            task = Thumbnail(job, src)
+            add_task(task)
+
         else:
             task = MD5(job, src)
             add_task(task)
@@ -201,6 +204,9 @@ class Patero(GObject.GObject):
             add_task(task)
 
             task = FFmpegInfo(job, src)
+            add_task(task)
+
+            task = Thumbnail(job, src)
             add_task(task)
 
 

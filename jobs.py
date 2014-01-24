@@ -281,6 +281,39 @@ class FFmpegInfo(JobBase):
 
             self.alldone()
 
+class Thumbnail(JobBase):
+    def __init__(self, job, src=None, dst=None):
+        JobBase.__init__(self, job, src, dst)
+
+    def start (self):
+
+        if self.dst is None:
+            self.dst = os.path.join( os.path.split(self.src)[0], self.job['output']['checksum']+'.jpg' )
+
+        _type = getFileType(self.src)
+        seconds = unicode( _type and _type['seconds'] or 5)
+
+        self.emit ('start', self.src, self.dst)
+        self.emit ('status', 'Making thumbnail')
+        prog = '-an -r 1 -vcodec mjpeg -vframes 1 -s 150x100 -ss'.split()
+        head = ['ffmpeg', '-i', self.src]
+        head.extend(prog)
+        prog = head
+        prog.append(seconds)
+        prog.append('-y')
+        prog.append(self.dst)
+        p = self.spawn(prog)
+        p.connect ('exit', self._on_exit)
+
+    def _on_exit(self, process, ret):
+        if ret:
+            self.emit('error', 'FFmpeg error')
+
+        else:
+            self.job['output']['files'].append(self.dst)
+            self.alldone()
+
+
 class Transcode(JobBase):
     def __init__(self, job, src=None, dst=None):
         JobBase.__init__(self, job, src, dst)
