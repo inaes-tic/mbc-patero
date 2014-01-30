@@ -182,7 +182,7 @@ class FFmpegInfo(JobBase):
             h,m = divmod(m, 60)
 
             # hate hate hate.
-            return ('%i:%.2i:%.2i' % (h,m,s)) + ('%.2f'%msecs)[1:]
+            return ('%.2i:%.2i:%.2i' % (h,m,s)) + ('%.2f'%msecs)[1:]
 
         def find_stream_by_codec(streams, codec):
             for s in streams.values():
