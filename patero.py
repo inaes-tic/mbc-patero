@@ -22,8 +22,6 @@ class Patero(GObject.GObject):
         queue = self.queue = JobCollection()
         queue.fetch()
 
-        self.redis = redis.Redis(host=redis_host, port=redis_port, db=redis_db)
-
         self.tasks = deque()
         self.status = Status()
         self.running = False
