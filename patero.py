@@ -10,85 +10,62 @@ from gi.repository import GLib, GObject
 
 import redis,json
 
-import pymongo
-from pymongo import MongoClient
-ObjectId = pymongo.helpers.bson.ObjectId
-
 from common import *
 from jobs import getFileType, Transcode, MD5, Filmstrip, FFmpegInfo, Thumbnail
+from models import Status, Job, JobCollection, Media
 from monitor import Monitor
 
 class Patero(GObject.GObject):
     def __init__(self):
         GObject.GObject.__init__(self)
 
-        self.client = MongoClient(mongocnstr)
-        db = self.db = getattr(self.client, dbname)
-        queue = self.queue = getattr(db, queue_coll)
+        queue = self.queue = JobCollection()
+        queue.fetch()
 
         self.redis = redis.Redis(host=redis_host, port=redis_port, db=redis_db)
 
         self.tasks = deque()
+        self.status = Status()
         self.running = False
 
-        res = queue.update({'stage': {'$in':['processing']}}, {'$set': {'stage': 'queued', 'tasks': [], 'progress':0, 'output.files': []}}, multi=True)
-        if res['n']:
-            self.refresh_jobs()
+        for job in queue.where({'stage': 'processing'}):
+            job.update({
+                'stage': 'queued',
+                'tasks': [],
+                'progress': 0,
+            })
+            job['output']['files'] = []
+            job.save()
 
-        for obj in queue.find({'stage': 'moving'}):
-            self.delete_job(obj)
-            self.queue_file(obj['input']['path'])
+        for job in queue.where({'stage': 'moving'}):
+            job.destroy()
+            self.queue_file(job['input']['path'])
 
         GLib.timeout_add(500, self.transcode)
         GLib.timeout_add(500, self.send_status)
 
 
     def send_status(self, status=None):
-        if status is None:
-            status = { 'running': True, 'id': 1 }
-        method = 'created'
-        self.redis.publish('Transcode.Status', json.dumps({'method': method, 'payload': status}))
+        self.status.save({'_id':1, 'running': True})
         return True
-
-    def refresh_jobs(self):
-        method = 'updated'
-        for job in self.queue.find():
-            self.redis.publish('Transcode.Progress', json.dumps({'method': method, 'payload': job}))
-
-    def delete_job(self, job):
-        self.queue.remove(job['_id'])
-        _id = job['_id']
-        self.redis.publish('Transcode.Progress', json.dumps({'method': 'deleted', 'payload': {'id':_id, '_id':_id} }))
-
-    def save_job(self, job, isNew=False):
-        if '_id' in job:
-            method = 'updated'
-        else:
-            method = 'created'
-
-        if isNew:
-            method = 'created'
-
-        _oid = self.queue.save(job)
-        self.redis.publish('Transcode.Progress', json.dumps({'method': method, 'payload': job}))
 
     def transcode(self):
         if self.running:
             return True
 
-        job = self.queue.find_one({'stage': 'queued'})
+        job = self.queue.findWhere({'stage': 'queued'})
 
         if not job:
             return True
 
         job['stage'] = 'about-to-process'
-        self.save_job(job)
+        job.save()
 
         def progress_cb(task, progress):
             job = task.job
-            logging.debug('Progress: %s', progress)
+            ##logging.debug('Progress: %s', progress)
             job['progress'] = progress
-            self.save_job(job)
+            job.save()
 
 
         def start_cb(task, src, dst):
@@ -96,7 +73,7 @@ class Patero(GObject.GObject):
             logging.debug('Start: %s', src)
             job['stage'] = 'processing'
             job['progress'] = 0
-            self.save_job(job)
+            job.save()
 
         def error_cb(task, msg):
             job = task.job
@@ -106,7 +83,7 @@ class Patero(GObject.GObject):
             if job['tasks']:
                 job['tasks'][-1]['status'] = 'failed'
                 job['tasks'][-1]['message'] = 'Error: ' + msg
-            self.save_job(job)
+            job.save()
             self.tasks.clear()
             self.running = False
 
@@ -116,7 +93,7 @@ class Patero(GObject.GObject):
             if job['tasks']:
                 job['tasks'][-1]['status'] = 'done'
             job['tasks'].append({'name':msg, 'status':'processing', 'message':''})
-            self.save_job(job)
+            job.save()
 
         def start(*args):
             self.running = True
@@ -131,7 +108,7 @@ class Patero(GObject.GObject):
 
             if job['tasks']:
                 job['tasks'][-1]['status'] = 'done'
-                self.save_job(job)
+                job.save()
 
             if not self.tasks:
                 logging.debug('Ok: %s', dst)
@@ -144,9 +121,20 @@ class Patero(GObject.GObject):
                     os.unlink(filename)
                     tmp.append(os.path.join(output_dir, os.path.basename(filename)))
                 job['output']['files'] = tmp
-                self.save_job(job)
-                # XXX FIXME: here tell Caspa the file is ready
-                # not needed I guess, when we get there a processing-done we know it's time to add it.
+                job.save()
+
+                # here tell Caspa the file is ready
+                m = Media()
+                for key in ['metadata', 'stat']:
+                    m.update(job['output'][key])
+
+                m['_id'] = job['output']['checksum']
+                m['checksum'] = job['output']['checksum']
+                m['files'] = job['output']['files']
+                m['file'] = job['output']['transcoded']
+
+                m.save()
+
                 self.running = False
                 return
             else:
@@ -173,7 +161,7 @@ class Patero(GObject.GObject):
                 task.job['output']['stat'] = stat_to_dict(os.stat(dst))
             except OSError:
                 pass
-            self.save_job(task.job)
+            task.job.save()
 
         _type = getFileType(src)
         if _type['type'] == 'video':
@@ -227,12 +215,11 @@ class Patero(GObject.GObject):
             logging.debug('File not recognized: %s', filepath)
             return
 
-        db = self.db
-        if db.transcode_queue.find({ 'input.stat.mtime': stat['mtime'], 'path': filepath}).count():
+        # not reimplementing as mongo is quite good at this.
+        if self.queue._col.find({ 'input.stat.mtime': stat['mtime'], 'path': filepath}).count():
             return
 
-        job = {
-            '_id': unicode(uuid.uuid4()),
+        job = Job( {
             'input':    {
                 'stat': stat,
                 'path': filepath,
@@ -248,14 +235,14 @@ class Patero(GObject.GObject):
             'stage':    '',
             'progress': '0',
             'tasks':  [], # list of: {name:'', status:'', message:''}
-        }
-        self.save_job(job, isNew=True)
+        })
+
+        job.save()
 
         if do_copy:
             try:
                 copy_or_link(filepath, os.path.join(workspace_dir, filename))
                 job['stage'] = 'queued'
-                self.save_job(job)
                 os.unlink(filepath)
             except:
                 e = sys.exc_info()[1]
@@ -265,10 +252,13 @@ class Patero(GObject.GObject):
                     'status': 'failed',
                     'message': 'Error: ' + unicode(e),
                 })
-                self.save_job(job)
+            finally:
+                job.save()
         else:
             job['stage'] = 'queued'
-            self.save_job(job)
+            job.save()
+
+        self.queue.add(job)
 
 
 if __name__ == '__main__':
