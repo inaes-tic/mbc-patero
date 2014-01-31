@@ -4,6 +4,7 @@ import Process
 
 import tempfile
 import hashlib
+import sys
 import os
 import re
 import math
@@ -89,13 +90,16 @@ class MD5(JobBase):
         # http://stackoverflow.com/questions/1131220/get-md5-hash-of-big-files-in-python
         self.emit ('start', self.src, self.dst)
         md5 = hashlib.md5()
-        with open(self.src,'rb') as f:
-            for chunk in iter(lambda: f.read(8192), b''):
-                 md5.update(chunk)
-        self.job['output']['checksum'] = md5.hexdigest()
-        self.emit ('status', 'Calculating checksum')
-        self.emit ('progress', 100.0)
-        self.alldone()
+        try:
+            with open(self.src,'rb') as f:
+                for chunk in iter(lambda: f.read(8192), b''):
+                     md5.update(chunk)
+            self.job['output']['checksum'] = md5.hexdigest()
+            self.emit ('status', 'Calculating checksum')
+            self.emit ('progress', 100.0)
+            self.alldone()
+        except IOError, e:
+            self.emit ('error', unicode(e))
 
 class Filmstrip(JobBase):
     def __init__(self, job, src=None, dst=None):
