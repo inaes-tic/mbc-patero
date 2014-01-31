@@ -183,7 +183,7 @@ class MyModel(Model):
         method = 'update'
         if self.id is None:
             # ObjectID gives a lot of trouble when(if) we want to send it over Redis.
-            self.id = attributes and attributes.get(self.idAttribute, None) or unicode( uuid.uuid4() )
+            self.id = self.attributes.get(self.idAttribute, None) or unicode( uuid.uuid4() )
             self.attributes[self.idAttribute] = self.id
             method = 'create'
 
