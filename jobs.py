@@ -8,6 +8,7 @@ import sys
 import os
 import re
 import math
+import fractions
 
 
 from Melt import Transcode as MeltTranscode
@@ -229,7 +230,7 @@ class FFmpegInfo(JobBase):
 
             # save aspect ratio for auto-padding
             aspect = stream.get('display_aspect_ratio', '')
-            if aspect:
+            if aspect and re.match('\d+:\d+', aspect):
                 n,d = [float(x) for x in aspect.split(':')]
                 ret['aspect'] = n / d
                 ret['aspectString'] = aspect
@@ -237,13 +238,17 @@ class FFmpegInfo(JobBase):
                 w,h = res['w'], res['h']
                 if w:
                     ret['aspect'] = float(w) / h
-                    ret['aspectString'] = '%i:%i' % (w,h)
+                    f = fractions.Fraction(w,h)
+                    ret['aspectString'] = '%i:%i' % (f.numerator, f.denominator)
                 else:
                     ret['aspect'] = 0.0
                     ret['aspectString'] = ''
 
             # save pixel ratio for output size calculation
             aspect = stream.get('sample_aspect_ratio', '1:1')
+            if not re.match('\d+:\d+', aspect):
+                aspect = '1:1'
+
             n,d = [float(x) for x in aspect.split(':')]
             ret['pixel'] = pixel = n / d
             ret['pixelString'] = aspect
