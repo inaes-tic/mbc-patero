@@ -96,6 +96,119 @@ class TestMD5(unittest.TestCase):
         self.assertEqual(job['output']['checksum'], 'a3bb96c411fa6c4a28305b87caab9aad', 'computed checksum matches')
 
 
+class TestFFmpegInfo(unittest.TestCase):
+    def test_image_input(self):
+        """FFmpegInfo should work with image files"""
+        job = {
+            'output': {
+                'metadata': {}
+            }
+        }
+
+        golden = {
+            'output.metadata.audio': {},
+            'output.metadata.synched': True,
+            'output.metadata.durationraw': '00:00:00.04',
+            'output.metadata.video.resolution.h': 960,
+            'output.metadata.video.resolution.w': 1280,
+            'output.metadata.video.aspectString': '4:3',
+        }
+        info = FFmpegInfo(job, src='golden/torta.jpeg')
+        smon = SignalMonitor(info, *_job_signals)
+
+        info.start()
+
+        # hate hate hate.
+        # FIXME: need to wait for the process to start.
+        time.sleep(1)
+
+        ctx = GLib.MainContext.default()
+        while ctx.pending():
+            ctx.iteration()
+
+        self.assertEqual(smon.finished_count, 1, 'job finised without errors')
+        self.assertEqual(smon.error_count, 0, 'job finised without errors')
+        self.assertTrue( compare_dict_to_ref(job, golden), 'output matches expected info')
+
+        duration, found = deep_get(job, 'output.metadata.durationsec')
+        self.assertTrue(found, 'has filled metadata.durationsec')
+        self.assertAlmostEqual(duration, 0.04, places=2, msg='duration is 1 frame at 25fps (0.04 seconds)')
+
+        aspect, found = deep_get(job, 'output.metadata.video.aspect')
+        self.assertTrue(found, 'has filled metadata.video.aspect')
+        self.assertAlmostEqual(aspect, 1.333, places=3, msg='aspect is 1.333.. (4:3)')
+
+    def test_video_input(self):
+        """FFmpegInfo should work with video files"""
+        job = {
+            'output': {
+                'metadata': {}
+            }
+        }
+
+        golden = {
+            'output.metadata.audio.channels': 'mono',
+            'output.metadata.audio.sample_rate': 22050,
+            'output.metadata.audio.channels': 'mono',
+            'output.metadata.synched': True,
+            'output.metadata.durationraw': '00:00:06.37',
+            'output.metadata.video.container': 'avi',
+            'output.metadata.video.fps': 30.0,
+            'output.metadata.video.resolution.h': 240,
+            'output.metadata.video.resolution.w': 320,
+            'output.metadata.video.aspectString': '4:3',
+        }
+        info = FFmpegInfo(job, src='golden/clavija_bronce.avi')
+        smon = SignalMonitor(info, *_job_signals)
+
+        info.start()
+
+        # hate hate hate.
+        # FIXME: need to wait for the process to start.
+        time.sleep(1)
+
+        ctx = GLib.MainContext.default()
+        while ctx.pending():
+            ctx.iteration()
+
+        self.assertEqual(smon.finished_count, 1, 'job finised without errors')
+        self.assertEqual(smon.error_count, 0, 'job finised without errors')
+
+        self.assertTrue( compare_dict_to_ref(job, golden), 'output matches expected info')
+
+        duration, found = deep_get(job, 'output.metadata.durationsec')
+        self.assertTrue(found, 'has filled metadata.durationsec')
+        self.assertAlmostEqual(duration, 6.366, places=2, msg='duration is about 6.366 seconds')
+
+        aspect, found = deep_get(job, 'output.metadata.video.aspect')
+        self.assertTrue(found, 'has filled metadata.video.aspect')
+        self.assertAlmostEqual(aspect, 1.333, places=3, msg='aspect is 1.333.. (4:3)')
+
+    def test_nonexistant(self):
+        """FFmpegInfo should error for not existing or not recognized files"""
+        job = {
+            'output': {
+                'metadata': {}
+            }
+        }
+
+        info = FFmpegInfo(job, src='golden/does_not_exist.txt')
+        smon = SignalMonitor(info, *_job_signals)
+
+        info.start()
+
+        # hate hate hate.
+        # FIXME: need to wait for the process to start.
+        time.sleep(1)
+
+        ctx = GLib.MainContext.default()
+        while ctx.pending():
+            ctx.iteration()
+
+        self.assertEqual(smon.finished_count, 0, 'job finised without errors')
+        self.assertEqual(smon.error_count, 1, 'FFmpegInfo emits "error" if file is not found or is not recognized')
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     unittest.main(verbosity=2)
