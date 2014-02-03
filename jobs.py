@@ -212,7 +212,10 @@ class FFmpegInfo(JobBase):
                 return ret
 
             ret['container'] = fmt.get('format_name', '').split(',')[0]
-            ret['bitrate'] = int( fmt.get('bit_rate', 0) )
+            try:
+                ret['bitrate'] = int( fmt.get('bit_rate', 0) )
+            except ValueError:
+                ret['bitrate'] = 0
             ret['codec'] = stream.get('codec_name', '')
             num,den = [float(x) for x in stream.get('r_frame_rate', '0.0/1').split('/')]
             if den:
