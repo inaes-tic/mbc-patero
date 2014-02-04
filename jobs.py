@@ -303,7 +303,10 @@ class Thumbnail(JobBase):
             self.dst = os.path.join( os.path.split(self.src)[0], self.job['output']['checksum']+'.jpg' )
 
         _type = getFileType(self.src)
-        seconds = unicode( _type and _type['seconds'] or 5)
+        seconds = '5'
+        if _type:
+            seconds = _type['seconds']
+        seconds = unicode(seconds)
 
         self.emit ('start', self.src, self.dst)
         self.emit ('status', 'Making thumbnail')
