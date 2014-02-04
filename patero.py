@@ -11,6 +11,7 @@ from gi.repository import GLib, GObject
 import redis,json
 
 from common import *
+import common
 from jobs import getFileType, Transcode, MD5, Filmstrip, FFmpegInfo, Thumbnail
 from models import Status, Job, JobCollection, Media
 from monitor import Monitor
@@ -25,19 +26,6 @@ class Patero(GObject.GObject):
         self.tasks = deque()
         self.status = Status()
         self.running = False
-
-        for job in queue.where({'stage': 'processing'}):
-            job.update({
-                'stage': 'queued',
-                'tasks': [],
-                'progress': 0,
-            })
-            job['output']['files'] = []
-            job.save()
-
-        for job in queue.where({'stage': 'moving'}):
-            job.destroy()
-            self.queue_file(job['input']['path'])
 
         GLib.timeout_add(500, self.transcode)
         GLib.timeout_add(500, self.send_status)
@@ -147,12 +135,12 @@ class Patero(GObject.GObject):
             task.connect('error', error_cb)
 
         filename = job['filename']
-        src = os.path.join(workspace_dir, filename)
+        src = os.path.join(common.workspace_dir, filename)
         dst = os.path.splitext(filename)[0] + '.m4v'
-        dst = os.path.join(workspace_dir, dst)
+        dst = os.path.join(common.workspace_dir, dst)
 
         def on_transcode_finish(task, src, dst):
-            task.job['output']['transcoded'] = os.path.join(output_dir, os.path.basename(dst))
+            task.job['output']['transcoded'] = os.path.join(common.output_dir, os.path.basename(dst))
             task.job['output']['stat'] = {}
             # XXX: this may end up with a different inode number after moving to processed dir.
             try:
@@ -239,7 +227,7 @@ class Patero(GObject.GObject):
 
         if do_copy:
             try:
-                copy_or_link(filepath, os.path.join(workspace_dir, filename))
+                copy_or_link(filepath, os.path.join(common.workspace_dir, filename))
                 job['stage'] = 'queued'
                 os.unlink(filepath)
             except:
@@ -263,18 +251,33 @@ if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
 
     p = Patero()
-    m = Monitor(incoming_dir)
+    m = Monitor(common.incoming_dir)
+
+    queue = p.queue
+    queue.fetch()
 
     def new_file_cb(monitor, filepath):
         p.queue_file(filepath.decode('utf-8'))
-
     m.connect('new-file', new_file_cb)
 
-    for fn in os.listdir(incoming_dir):
-        afn = os.path.join(incoming_dir, fn)
+    for fn in os.listdir(common.incoming_dir):
+        afn = os.path.join(common.incoming_dir, fn)
         if not os.path.isfile(afn):
             continue
         p.queue_file(afn)
+
+    for job in queue.where({'stage': 'processing'}):
+        job.update({
+            'stage': 'queued',
+            'tasks': [],
+            'progress': 0,
+        })
+        job['output']['files'] = []
+        job.save()
+
+    for job in queue.where({'stage': 'moving'}):
+        job.destroy()
+        p.queue_file(job['input']['path'])
 
     loop = GLib.MainLoop()
     loop.run()
