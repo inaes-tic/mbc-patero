@@ -92,6 +92,11 @@ If 'diffout' is given the difference between images is saved there.
         return (match, diff)
 
 
+class JobMock(Job):
+    def save(self, *args, **kwargs):
+        pass
+
+
 class TestMD5(unittest.TestCase):
     def test_nonexistant(self):
         """"MD5 should emit 'error' if the file can not be opened"""
