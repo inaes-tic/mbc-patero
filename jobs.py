@@ -17,7 +17,7 @@ _file_types = [
     {
     'type':    'image',
     'seconds': 0,
-    'pattern': re.compile(r'\.(bmp|gif|jpg|png|yuv|pix|dpx|exr|jpeg|pam|pbm|pcx|pgm|pic|ppm|ptx|sgi|tif|tiff|webp|xbm|xwd)$', re.I),
+    'pattern': re.compile(r'\.(bmp|gif|jpg|jpeg|png|yuv|pix|dpx|exr|jpeg|pam|pbm|pcx|pgm|pic|ppm|ptx|sgi|tif|tiff|webp|xbm|xwd)$', re.I),
     },
     {
     'type':    'video',
