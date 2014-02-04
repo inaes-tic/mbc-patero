@@ -63,6 +63,31 @@ def compare_dict_to_ref(d, ref, debug=False, failEarly=True):
     return True
 
 
+def compare_images(img1, img2, threshold=0.0, diffout='null:'):
+    """
+Compares two image files.
+Returns a tuple of (match, difference), where 'match' is a boolean and
+'difference' the calculated difference index.
+Threshold is a float greater than or equal to 0 (0 is exact match).
+If 'diffout' is given the difference between images is saved there.
+    """
+
+    diff = -1
+    match = False
+    cmd = ['compare', '-metric', 'RMSE', img1, img2, diffout]
+
+    try:
+        output = subprocess.check_output(cmd, stderr=subprocess.STDOUT)
+
+        d = re.findall('\((.+)\)', output)
+        if d:
+            diff = float(d[0])
+            match = (diff <= threshold)
+
+    finally:
+        return (match, diff)
+
+
 class TestMD5(unittest.TestCase):
     def test_nonexistant(self):
         """"MD5 should emit 'error' if the file can not be opened"""
