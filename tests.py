@@ -302,6 +302,72 @@ class TestThumbnail(unittest.TestCase):
         self.assertEqual(smon.error_count, 1, 'Thumbnail emits "error" if file is not found or is not recognized')
 
 
+class TestFilmstrip(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix='.mp4')
+        self.tmp = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.close()
+
+    def do_filmstrip(self, src, golden):
+        job = {
+            'output': {
+                'files': [],
+            }
+        }
+
+        film = Filmstrip(job, src=src, dst=self.tmp)
+        smon = SignalMonitor(film, *_job_signals)
+
+        film.start()
+
+        # hate hate hate.
+        # FIXME: need to wait for the process to start.
+        time.sleep(1)
+
+        ctx = GLib.MainContext.default()
+        while ctx.pending():
+            ctx.iteration()
+
+        self.assertEqual(smon.finished_count, 1, 'job finised without errors')
+
+        # XXX FIXME: take a single frame and compare?
+        # XXX FIXME: compare one by one?
+        # match, diff = compare_images(golden, self.tmp)
+        # self.assertEqual(match, True, 'generated thumbnail matches expected image.')
+
+    def test_image_input(self):
+        self.do_filmstrip(src='golden/torta.jpeg', golden=None)
+
+    def test_video_input(self):
+        self.do_filmstrip(src='golden/clavija_bronce.avi', golden=None)
+
+    def test_nonexistant(self):
+        """Filmstrip should error for not existing or not recognized files"""
+        job = {
+            'output': {
+                'files': [],
+            }
+        }
+
+        film = Filmstrip(job, src='golden/does_not_exist.txt', dst=self.tmp)
+        smon = SignalMonitor(film, *_job_signals)
+
+        film.start()
+
+        # hate hate hate.
+        # FIXME: need to wait for the process to start.
+        time.sleep(1)
+
+        ctx = GLib.MainContext.default()
+        while ctx.pending():
+            ctx.iteration()
+
+        self.assertEqual(smon.finished_count, 0, 'job finised without errors')
+        self.assertEqual(smon.error_count, 1, 'Filmstrip emits "error" if file is not found or is not recognized')
+
+
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     unittest.main(verbosity=2)
