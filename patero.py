@@ -17,6 +17,9 @@ from models import Status, Job, JobCollection, Media
 from monitor import Monitor
 
 class Patero(GObject.GObject):
+    __gsignals__ = {
+        'finished': (GObject.SIGNAL_RUN_FIRST, None, [GObject.TYPE_PYOBJECT]),
+    }
     def __init__(self):
         GObject.GObject.__init__(self)
 
@@ -100,27 +103,9 @@ class Patero(GObject.GObject):
                 logging.debug('Ok: %s', dst)
                 job['stage'] = 'processing-done'
                 job['progress'] = 0
-
-                tmp = []
-                for filename in job['output']['files']:
-                    copy_or_link(filename, output_dir)
-                    os.unlink(filename)
-                    tmp.append(os.path.join(output_dir, os.path.basename(filename)))
-                job['output']['files'] = tmp
                 job.save()
 
-                # here tell Caspa the file is ready
-                m = Media()
-                for key in ['metadata', 'stat']:
-                    m.update(job['output'][key])
-
-                m['_id'] = job['output']['checksum']
-                m['checksum'] = job['output']['checksum']
-                m['files'] = job['output']['files']
-                m['file'] = job['output']['transcoded']
-
-                m.save()
-
+                self.emit('finished', job)
                 self.running = False
                 return
             else:
@@ -259,6 +244,29 @@ if __name__ == '__main__':
     def new_file_cb(monitor, filepath):
         p.queue_file(filepath.decode('utf-8'))
     m.connect('new-file', new_file_cb)
+
+    def job_finished_cb(patero, job):
+        tmp = []
+        for filename in job['output']['files']:
+            copy_or_link(filename, common.output_dir)
+            os.unlink(filename)
+            tmp.append(os.path.join(common.output_dir, os.path.basename(filename)))
+        job['output']['files'] = tmp
+        job.save()
+
+        # here tell Caspa the file is ready
+        media = Media()
+        for key in ['metadata', 'stat']:
+            media.update(job['output'][key])
+
+        media['_id'] = job['output']['checksum']
+        media['checksum'] = job['output']['checksum']
+        media['files'] = job['output']['files']
+        media['file'] = job['output']['transcoded']
+
+        media.save()
+    p.connect('finished', job_finished_cb)
+
 
     for fn in os.listdir(common.incoming_dir):
         afn = os.path.join(common.incoming_dir, fn)
