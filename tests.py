@@ -3,6 +3,10 @@
 
 import logging
 import sys, os, shutil, time
+
+import subprocess
+import tempfile
+import re
 import unittest
 import redis,json
 
@@ -232,6 +236,70 @@ class TestFFmpegInfo(unittest.TestCase):
 
         self.assertEqual(smon.finished_count, 0, 'job finised without errors')
         self.assertEqual(smon.error_count, 1, 'FFmpegInfo emits "error" if file is not found or is not recognized')
+
+
+class TestThumbnail(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.NamedTemporaryFile(suffix='.jpg')
+        self.tmp = self._tmp.name
+
+    def tearDown(self):
+        self._tmp.close()
+
+    def do_thumb(self, src, golden):
+        job = {
+            'output': {
+                'files': [],
+            }
+        }
+
+        thum = Thumbnail(job, src=src, dst=self.tmp)
+        smon = SignalMonitor(thum, *_job_signals)
+
+        thum.start()
+
+        # hate hate hate.
+        # FIXME: need to wait for the process to start.
+        time.sleep(1)
+
+        ctx = GLib.MainContext.default()
+        while ctx.pending():
+            ctx.iteration()
+
+        self.assertEqual(smon.finished_count, 1, 'job finised without errors')
+
+        match, diff = compare_images(golden, self.tmp)
+        self.assertEqual(match, True, 'generated thumbnail matches expected image.')
+
+    def test_image_input(self):
+        self.do_thumb(src='golden/torta.jpeg', golden='golden/torta_thumb.jpg')
+
+    def test_video_input(self):
+        self.do_thumb(src='golden/clavija_bronce.avi', golden='golden/clavija_thumb.jpg')
+
+    def test_nonexistant(self):
+        """Thumbnail should error for not existing or not recognized files"""
+        job = {
+            'output': {
+                'files': [],
+            }
+        }
+
+        thum = Thumbnail(job, src='golden/does_not_exist.txt', dst=self.tmp)
+        smon = SignalMonitor(thum, *_job_signals)
+
+        thum.start()
+
+        # hate hate hate.
+        # FIXME: need to wait for the process to start.
+        time.sleep(1)
+
+        ctx = GLib.MainContext.default()
+        while ctx.pending():
+            ctx.iteration()
+
+        self.assertEqual(smon.finished_count, 0, 'job finised without errors')
+        self.assertEqual(smon.error_count, 1, 'Thumbnail emits "error" if file is not found or is not recognized')
 
 
 if __name__ == '__main__':
