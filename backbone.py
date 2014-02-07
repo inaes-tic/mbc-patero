@@ -244,7 +244,7 @@ class MyCollection(Collection):
         return len(self.models)
 
     def __getitem__(self, key):
-        return self.models[key]
+        return self._models[key]
 
     def get(self, _id):
         return self._models[_id]
