@@ -9,10 +9,13 @@ import pymongo
 from pymongo import MongoClient
 
 from common import *
+from gredis import RedisListener
 
 redis = redis.Redis(host=redis_host, port=redis_port, db=redis_db)
 
 _client_id = unicode( uuid.uuid4() )
+
+listener = RedisListener(redis=redis, client_id = _client_id)
 
 # XXX: according to mongo docs we only need to create one client and share it everywhere
 client = MongoClient(mongocnstr)
@@ -103,10 +106,40 @@ class MyModel(Model):
         super(Model, self).__init__()
         self.collection = None
         self.attributes = deepcopy(self.defaults)
+        self._redis_handler = None
 
         if attributes is not None:
             self.attributes.update(attributes)
             self.id = attributes.get(self.idAttribute, None)
+
+
+    def bindRedis(self):
+        listener.subscribe(self._channel)
+        self._redis_handler = listener.connect('message', self._on_backend)
+
+    def _on_backend(self, listener, message):
+        data = json.loads(message['data'])
+        if message.get('channel', None) != self._channel:
+            return
+
+        if data.get('_redis_source', _client_id) == _client_id:
+            return
+
+        method = data.get('method', None)
+        model = data.get('model', None)
+        if model is None:
+            return
+
+        if method not in 'create read update delete'.split():
+            return
+
+        if model.get(self.idAttribute, None) != self.attributes[self.idAttribute]:
+            return
+
+        if method == 'update':
+            self.set(model)
+        elif method == 'delete':
+            self.destroy()
 
     def __getitem__(self, key):
         return self.attributes[key]
@@ -200,6 +233,10 @@ class MyModel(Model):
         if self.collection:
             self.collection.remove(self)
 
+        if self._redis_handler is not None:
+            listener.disconnect(self._redis_handler)
+            self._redis_handler = None
+
 
 class Collection(Base):
     """A class that somehow mimics Backbone.Collection
@@ -222,6 +259,7 @@ class MyCollection(Collection):
 
         self.models = []
         self._models = {}
+        self._redis_handler = None
 
         if models is not None:
             for m in models:
@@ -233,6 +271,37 @@ class MyCollection(Collection):
                 self.models.append(M)
                 self._models[M.id] = M
                 M.collection = self
+
+    def bindRedis(self):
+        listener.subscribe(self._channel)
+        self._redis_handler = listener.connect('message', self._on_backend)
+
+    def _on_backend(self, listener, message):
+        data = json.loads(message['data'])
+        if message.get('channel', None) != self._channel:
+            return
+
+        if data.get('_redis_source', _client_id) == _client_id:
+            return
+
+        method = data.get('method', None)
+        model = data.get('model', None)
+        if model is None:
+            return
+
+        if method not in 'create read update delete'.split():
+            return
+
+        mid = model.get(self.model.idAttribute, None)
+        mod = self._models.get(mid, None)
+
+        if method == 'update' and mod is not None:
+            mod.set(model)
+        if method == 'delete' and mod is not None:
+            mod.destroy()
+
+        if method == 'create':
+            self.add(model)
 
     def __iter__(self, *args, **kwargs):
         return iter( self.models )
