@@ -9,15 +9,6 @@ from Queue import Empty, Full
 from gi.repository import GLib, GObject
 
 
-def worker_fn(pubsub, queue, client_id):
-    g = pubsub.listen()
-    while True:
-        try:
-            msg = g.next()
-            queue.put(msg)
-        except StopIteration:
-            logging.error('Redis: got StopIteration')
-
 class RedisListener(GObject.GObject):
     """
 RedisListener:
@@ -43,12 +34,35 @@ The 'redis' parameter is a connection like the one from  calling redis.Redis()
         self.pubsub = pubsub
         self.queue = Queue()
 
-        GLib.timeout_add(50, self._check_queue)
+        GLib.timeout_add(50, self.check_queue)
+        self.create_worker()
 
-        self.worker = Process(target=worker_fn, args=[self.pubsub, self.queue, self.client_id])
+
+    def create_worker(self):
+        kwargs = {
+            'pubsub':    self.pubsub,
+            'queue':     self.queue,
+            'client_id': self.client_id
+        }
+        self.worker = Process(target=self.worker_fn, kwargs=kwargs)
         self.worker.start()
 
-    def _check_queue(self):
+    def worker_fn(self, pubsub=None, queue=None, client_id=None, *args, **kwargs):
+        """This is executed on *another* process to sidestep blocking reads.
+        As soon as we get something we send it to the other side to be consumed later.
+        """
+        g = pubsub.listen()
+        while True:
+            try:
+                msg = g.next()
+                queue.put(msg)
+            except StopIteration:
+                logging.error('Redis: got StopIteration')
+
+    def check_queue(self):
+        """This is executed on the main process, when something arrives we just
+        emit a signal.
+        """
         while not self.queue.empty():
             try:
                 msg = self.queue.get_nowait()
