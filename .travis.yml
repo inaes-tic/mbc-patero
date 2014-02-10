@@ -3,7 +3,7 @@ python:
   - "2.7"
 before_install:
   - sudo apt-get update -qq
-  - sudo apt-get install -qq ffmpeg
+  - sudo apt-get install -qq ffmpeg python-gi gir1.2-glib-2.0 gobject-introspection
 install:
   - pip install -r requirements.txt
 script: python tests.py
