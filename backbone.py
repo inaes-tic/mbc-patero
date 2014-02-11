@@ -4,18 +4,101 @@ import re
 import uuid
 import redis, json
 from copy import deepcopy
+import threading
 
 import pymongo
 from pymongo import MongoClient
 
 from common import *
 from gredis import RedisListener
+from multiprocessing import Process, Queue, Event
+from Queue import Empty, Full
 
 redis = redis.Redis(host=redis_host, port=redis_port, db=redis_db)
 
 _client_id = unicode( uuid.uuid4() )
 
-listener = RedisListener(redis=redis, client_id = _client_id)
+class BackboneRedisListener(RedisListener):
+    def __init__(self, redis, client_id=None):
+        self.token_queue = Queue()
+        self.token_map = {}
+        self.tokenlck = threading.Lock()
+
+        super(BackboneRedisListener, self).__init__(redis, client_id)
+
+    def create_worker(self):
+        kwargs = {
+            'pubsub':    self.pubsub,
+            'queue':     self.queue,
+            'client_id': self.client_id,
+            'token_queue': self.token_queue,
+        }
+        self.worker = Process(target=self.worker_fn, kwargs=kwargs)
+        self.worker.start()
+
+        self.tokenworker = threading.Thread(target=self.token_worker_fn)
+        self.tokenworker.daemon = True
+        self.tokenworker.start()
+
+    def watchToken(self, token):
+        ev = threading.Event()
+        with self.tokenlck:
+            self.token_map[token] = ev
+        return ev
+
+    def worker_fn(self, pubsub=None, queue=None, client_id=None, *args, **kwargs):
+        token_queue = kwargs['token_queue']
+        g = pubsub.listen()
+        while True:
+            try:
+                message = g.next()
+                queue.put(message)
+
+                if message['type'] == 'message':
+                    data = json.loads(message['data'])
+                    token = data.get('token', None)
+                    if token is not None:
+                        token_queue.put(token)
+            except StopIteration:
+                logging.error('Redis: got StopIteration')
+
+    def token_worker_fn(self, *args, **kwargs):
+        fulfilled = []
+        token_queue = self.token_queue
+        token_map = self.token_map
+
+        def process_tokens():
+            to_remove = []
+
+            fulfilled.append( token_queue.get() )
+            while not token_queue.empty():
+                try:
+                    fulfilled.append( token_queue.get_nowait() )
+                except Empty:
+                    pass
+
+            with self.tokenlck:
+                for token in fulfilled:
+                    ev = token_map.pop(token, None)
+                    to_remove.append(token)
+                    if ev is None:
+                        continue
+                    else:
+                        ev.set()
+
+                for token, ev in token_map.iteritems():
+                    if ev.is_set():
+                        to_remove.append(token)
+                        token_map.pop(token)
+
+            for token in to_remove:
+                fulfilled.remove(token)
+
+        while True:
+            process_tokens()
+
+
+listener = BackboneRedisListener(redis=redis, client_id = _client_id)
 
 # XXX: according to mongo docs we only need to create one client and share it everywhere
 client = MongoClient(mongocnstr)
@@ -64,7 +147,7 @@ It is quite tied for now to our redis+mongo structure"""
 
         self._channel = '_RedisSync.' + re.sub('backend$', '', self.backend)
 
-    def sync(self, method, model=None, options=None):
+    def sync(self, method, model=None, options=None, extra={}):
         # XXX: dumb and not generic. for now it only broadcast to Redis.
         if method not in 'create read update delete'.split():
             raise BackboneException('sync(): unknown method %s' % method)
@@ -83,6 +166,8 @@ It is quite tied for now to our redis+mongo structure"""
             'model': model,
             '_redis_source': _client_id,
         }
+
+        req.update(extra)
         redis.publish(self._channel, json.dumps(req))
 
 class Model(Base):
