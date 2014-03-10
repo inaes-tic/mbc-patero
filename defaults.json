@@ -1,11 +1,11 @@
 {
-    "TranscodingCollection": "transcode_queue", 
-    "dbName": "mediadb", 
-    "incoming_dir": "/media/datos/compartida/patero/incoming", 
-    "mongodb": "mongodb://localhost:27017/", 
-    "output_dir": "/media/datos/compartida/patero/processed", 
-    "redisDb": 0, 
-    "redisHost": "localhost", 
-    "redisPort": 6379, 
+    "TranscodingCollection": "transcode_queue",
+    "dbName": "mediadb",
+    "incoming_dir": "/media/datos/compartida/patero/incoming",
+    "mongodb": "mongodb://localhost:27017/",
+    "output_dir": "/media/datos/compartida/patero/processed",
+    "redisDb": 0,
+    "redisHost": "localhost",
+    "redisPort": 6379,
     "workspace_dir": "/media/datos/compartida/patero/workspace"
 }
