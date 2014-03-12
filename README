@@ -6,6 +6,10 @@ Mongo and Redis to interact with MBC-Caspa.
 It monitors an incoming folder for new files and queues them for transcoding,
 adding them to Caspa when finished.
 
+Requirements:
+
+    apt-get install python-dev python-gi
+
 Installation:
 
 All python libraries are listed inside requirements.txt and can be installed
