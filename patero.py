@@ -263,6 +263,7 @@ if __name__ == '__main__':
         media['checksum'] = job['output']['checksum']
         media['files'] = job['output']['files']
         media['file'] = job['output']['transcoded']
+        media['stat'] = job['output']['stat']
 
         media.save()
     p.connect('finished', job_finished_cb)
